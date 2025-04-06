@@ -1,2 +1,6 @@
 /.idea/
 /.vscode/
+/output/*
+!/output/wasm/
+/output/wasm/*.wasm
+!**/.keep
