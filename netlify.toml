@@ -3,6 +3,9 @@
     command = "bash build_wasm.sh"
     publish = "output/wasm/"
 
+[build.environment]
+    GO_VERSION = "1.23.x"
+
 [[redirects]]
     from = "/"
     to = "/index.html"
