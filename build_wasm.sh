@@ -1,6 +1,8 @@
 #!/bin/bash
 
-./init.sh
+rm -f go.mod go.sum
+go mod init minebuster
+go mod tidy
 mkdir -p ./output
 
 # 编译Linux版本
