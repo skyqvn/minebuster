@@ -1,0 +1,14 @@
+[build]
+    base = "/"
+    command = "bash build_wasm.sh"
+    publish = "output/wasm/"
+
+[[redirects]]
+    from = "/"
+    to = "/index.html"
+    status = 200
+
+[[headers]]
+    for = "/*"
+    [headers.values]
+        Cache-Control = "public, max-age=3600, must-revalidate"
