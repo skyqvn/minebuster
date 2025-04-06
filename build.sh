@@ -1,5 +1,6 @@
 #!/bin/bash
 
+./init.sh
 mkdir -p ./output
 
 # 编译Linux版本
