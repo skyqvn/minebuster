@@ -1,6 +1,6 @@
 [build]
     base = "/"
-    command = "bash build_wasm.sh"
+    command = "sh build_wasm.sh"
     publish = "output/wasm/"
 
 [build.environment]
