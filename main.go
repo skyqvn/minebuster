@@ -8,7 +8,6 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"log"
 	"math/rand"
-	"os"
 	"strconv"
 	"time"
 )
@@ -45,6 +44,9 @@ type Board struct {
 	
 	isGameOver bool
 	isWin      bool
+	
+	startTime time.Time
+	elapsed   time.Duration
 }
 
 func NewBoard(rows, cols, cellSize, mines int) *Board {
@@ -61,6 +63,8 @@ func NewBoard(rows, cols, cellSize, mines int) *Board {
 		open:       0,
 		isGameOver: false,
 		isWin:      false,
+		startTime:  time.Now(),
+		elapsed:    0,
 	}
 	
 	b.op = &ebiten.DrawImageOptions{}
@@ -96,7 +100,6 @@ func NewBoard(rows, cols, cellSize, mines int) *Board {
 		img, _, err := ebitenutil.NewImageFromReader(bytes.NewReader(data))
 		if err != nil {
 			log.Fatal(err)
-			os.Exit(1)
 		}
 		b.images[name] = img
 	}
@@ -107,6 +110,7 @@ func NewBoard(rows, cols, cellSize, mines int) *Board {
 	load("unknown")
 	load("mine")
 	load("flag")
+	load("cross")
 	
 	return b
 }
@@ -127,7 +131,7 @@ func (b *Board) countNeighbors(x, y int) int {
 }
 
 func (b *Board) Draw() {
-	if b.isGameOver {
+	if b.isGameOver { // 游戏结束时显示所有格子
 		b.screen.Clear()
 		for y := 0; y < b.rows; y++ {
 			for x := 0; x < b.cols; x++ {
@@ -139,17 +143,17 @@ func (b *Board) Draw() {
 				op.GeoM.Translate(float64(cx), float64(cy))
 				
 				// 绘制数字、旗子或雷
-				if cell.isFlagged {
-					b.screen.DrawImage(b.images["flag"], op)
-				}
 				if cell.isMine {
 					b.screen.DrawImage(b.images["mine"], op)
 				} else if cell.neighbor >= 0 {
 					b.screen.DrawImage(b.images[strconv.Itoa(cell.neighbor)], op)
 				}
+				if cell.isFlagged {
+					b.screen.DrawImage(b.images["cross"], op)
+				}
 			}
 		}
-	} else {
+	} else { // 游戏尚未结束
 		b.screen.Clear()
 		for y := 0; y < b.rows; y++ {
 			for x := 0; x < b.cols; x++ {
@@ -220,6 +224,8 @@ func main() {
 }
 
 func NewDefaultBoard() *Board {
+	// 用于测试
+	// return NewBoard(2, 2, 25, 1)
 	return NewBoard(16, 16, 25, 40)
 }
 
@@ -289,11 +295,20 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	g.board.Draw()
 	screen.DrawImage(g.board.screen, g.board.op)
 	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("Flags: %d", g.board.flags), g.board.cols*g.board.cellSize+BorderWidth+10, 20)
+	
+	if !g.board.isGameOver {
+		g.board.elapsed = time.Since(g.board.startTime)
+	}
+	minutes := int(g.board.elapsed.Minutes())
+	seconds := int(g.board.elapsed.Seconds()) % 60
+	timerText := fmt.Sprintf("Time: %02d:%02d", minutes, seconds)
+	ebitenutil.DebugPrintAt(screen, timerText, g.board.cols*g.board.cellSize+BorderWidth+10, 36)
+	
 	if g.board.isGameOver {
 		if g.board.isWin {
-			ebitenutil.DebugPrintAt(screen, "You Win!\nClick anywhere to restart.", g.board.cols*g.board.cellSize+BorderWidth+10, 40)
+			ebitenutil.DebugPrintAt(screen, "You Win!\nClick anywhere to restart.", g.board.cols*g.board.cellSize+BorderWidth+10, 52)
 		} else {
-			ebitenutil.DebugPrintAt(screen, "Game Over!\nClick anywhere to restart.", g.board.cols*g.board.cellSize+BorderWidth+10, 40)
+			ebitenutil.DebugPrintAt(screen, "Game Over!\nClick anywhere to restart.", g.board.cols*g.board.cellSize+BorderWidth+10, 52)
 		}
 	}
 }
