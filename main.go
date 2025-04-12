@@ -13,6 +13,7 @@ import (
 )
 
 const (
+	Scale         = 2
 	BorderWidth   = 10
 	StateBarWidth = 160
 )
@@ -215,7 +216,7 @@ func main() {
 	board := NewDefaultBoard()
 	windowWidth = board.cols*board.cellSize + 2*BorderWidth + StateBarWidth
 	windowHeight = board.rows*board.cellSize + 2*BorderWidth
-	ebiten.SetWindowSize(windowWidth, windowHeight)
+	ebiten.SetWindowSize(windowWidth*Scale, windowHeight*Scale)
 	ebiten.SetWindowTitle("MineBuster")
 	
 	if err := ebiten.RunGame(&Game{board: board}); err != nil {
