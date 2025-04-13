@@ -7,6 +7,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"log"
+	"math"
 	"math/rand"
 	"strconv"
 	"time"
@@ -218,6 +219,7 @@ func main() {
 	windowHeight = board.rows*board.cellSize + 2*BorderWidth
 	ebiten.SetWindowSize(windowWidth*Scale, windowHeight*Scale)
 	ebiten.SetWindowTitle("MineBuster")
+	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
 	
 	if err := ebiten.RunGame(&Game{board: board}); err != nil {
 		log.Fatal(err)
@@ -246,11 +248,13 @@ func (g *Game) Update() error {
 	mx, my := ebiten.CursorPosition()
 	
 	// 转换为棋盘坐标
-	cx := (mx - BorderWidth) / g.board.cellSize
-	cy := (my - BorderWidth) / g.board.cellSize
+	var cx = int(math.Floor(float64(mx-BorderWidth) / float64(g.board.cellSize)))
+	var cy = int(math.Floor(float64(my-BorderWidth) / float64(g.board.cellSize)))
+	fmt.Printf("mx: %d, my: %d, cx: %d, cy: %d\n", mx, my, cx, cy)
 	
 	// 检查坐标是否有效
 	if cx >= 0 && cx < g.board.cols && cy >= 0 && cy < g.board.rows {
+		ebiten.SetCursorShape(ebiten.CursorShapePointer)
 		cell := &g.board.cells[cy][cx]
 		
 		// 获取当前按键状态
@@ -288,6 +292,8 @@ func (g *Game) Update() error {
 			g.board.isGameOver = true
 			g.board.isWin = true
 		}
+	} else {
+		ebiten.SetCursorShape(ebiten.CursorShapeDefault)
 	}
 	return nil
 }
