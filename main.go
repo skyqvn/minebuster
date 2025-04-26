@@ -250,48 +250,48 @@ func (g *Game) Update() error {
 	// 转换为棋盘坐标
 	var cx = int(math.Floor(float64(mx-BorderWidth) / float64(g.board.cellSize)))
 	var cy = int(math.Floor(float64(my-BorderWidth) / float64(g.board.cellSize)))
-	fmt.Printf("mx: %d, my: %d, cx: %d, cy: %d\n", mx, my, cx, cy)
 	
 	// 检查坐标是否有效
 	if cx >= 0 && cx < g.board.cols && cy >= 0 && cy < g.board.rows {
 		ebiten.SetCursorShape(ebiten.CursorShapePointer)
-		cell := &g.board.cells[cy][cx]
-		
 		// 获取当前按键状态
 		leftDown := ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft)
 		rightDown := ebiten.IsMouseButtonPressed(ebiten.MouseButtonRight)
-		
-		// 左键单击处理
-		if leftDown && !g.prevLeftDown && !cell.isFlagged {
-			if cell.isMine {
-				// 踩中地雷
-				cell.isOpen = true
-				g.board.isGameOver = true
-				g.board.isWin = false
-			} else {
-				// 安全区域自动扩展
-				g.board.openAndExpand(cx, cy)
+		if !g.board.isGameOver {
+			cell := &g.board.cells[cy][cx]
+			
+			// 左键单击处理
+			if leftDown && !g.prevLeftDown && !cell.isFlagged {
+				if cell.isMine {
+					// 踩中地雷
+					cell.isOpen = true
+					g.board.isGameOver = true
+					g.board.isWin = false
+				} else {
+					// 安全区域自动扩展
+					g.board.openAndExpand(cx, cy)
+				}
 			}
-		}
-		
-		// 右键标记处理
-		if rightDown && !g.prevRightDown && !cell.isOpen {
-			cell.isFlagged = !cell.isFlagged
-			if cell.isFlagged {
-				g.board.flags--
-			} else {
-				g.board.flags++
+			
+			// 右键标记处理
+			if rightDown && !g.prevRightDown && !cell.isOpen {
+				cell.isFlagged = !cell.isFlagged
+				if cell.isFlagged {
+					g.board.flags--
+				} else {
+					g.board.flags++
+				}
+			}
+			
+			if !g.board.isGameOver && g.board.open == g.board.rows*g.board.cols-g.board.mines {
+				g.board.isGameOver = true
+				g.board.isWin = true
 			}
 		}
 		
 		// 保存当前按键状态
 		g.prevLeftDown = leftDown
 		g.prevRightDown = rightDown
-		
-		if !g.board.isGameOver && g.board.open == g.board.rows*g.board.cols-g.board.mines {
-			g.board.isGameOver = true
-			g.board.isWin = true
-		}
 	} else {
 		ebiten.SetCursorShape(ebiten.CursorShapeDefault)
 	}
