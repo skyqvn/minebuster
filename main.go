@@ -4,13 +4,14 @@ import (
 	"bytes"
 	"embed"
 	"fmt"
-	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"log"
 	"math"
 	"math/rand"
 	"strconv"
 	"time"
+
+	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 )
 
 const (
@@ -24,11 +25,14 @@ var windowWidth, windowHeight int
 //go:embed assets/*
 var fs embed.FS
 
+const FocusDelay = 100 * time.Millisecond
+
 type Cell struct {
 	isMine    bool
 	neighbor  int
 	isOpen    bool
 	isFlagged bool
+	isFocused bool
 }
 
 type Board struct {
@@ -39,21 +43,21 @@ type Board struct {
 	cells    [][]Cell
 	images   map[string]*ebiten.Image
 	op       *ebiten.DrawImageOptions
-	
+
 	flags int
 	mines int
 	open  int
-	
+
 	isGameOver bool
 	isWin      bool
-	
+
 	startTime time.Time
 	elapsed   time.Duration
 }
 
 func NewBoard(rows, cols, cellSize, mines int) *Board {
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
-	
+
 	b := &Board{
 		screen:     ebiten.NewImage(rows*cellSize, cols*cellSize),
 		rows:       rows,
@@ -68,15 +72,15 @@ func NewBoard(rows, cols, cellSize, mines int) *Board {
 		startTime:  time.Now(),
 		elapsed:    0,
 	}
-	
+
 	b.op = &ebiten.DrawImageOptions{}
 	b.op.GeoM.Translate(BorderWidth, BorderWidth)
-	
+
 	// 初始化单元格
 	for i := range b.cells {
 		b.cells[i] = make([]Cell, cols)
 	}
-	
+
 	// 放置地雷
 	for i := 0; i < mines; {
 		x, y := r.Intn(cols), r.Intn(rows)
@@ -85,7 +89,7 @@ func NewBoard(rows, cols, cellSize, mines int) *Board {
 			i++
 		}
 	}
-	
+
 	// 计算相邻雷数
 	for y := 0; y < rows; y++ {
 		for x := 0; x < cols; x++ {
@@ -94,7 +98,7 @@ func NewBoard(rows, cols, cellSize, mines int) *Board {
 			}
 		}
 	}
-	
+
 	// 加载图片资源
 	b.images = make(map[string]*ebiten.Image)
 	load := func(name string) {
@@ -105,7 +109,7 @@ func NewBoard(rows, cols, cellSize, mines int) *Board {
 		}
 		b.images[name] = img
 	}
-	
+
 	for i := 0; i <= 8; i++ {
 		load(strconv.Itoa(i))
 	}
@@ -113,7 +117,8 @@ func NewBoard(rows, cols, cellSize, mines int) *Board {
 	load("mine")
 	load("flag")
 	load("cross")
-	
+	load("focus")
+
 	return b
 }
 
@@ -140,10 +145,10 @@ func (b *Board) Draw() {
 				cell := b.cells[y][x]
 				cx := x * b.cellSize
 				cy := y * b.cellSize
-				
+
 				op := &ebiten.DrawImageOptions{}
 				op.GeoM.Translate(float64(cx), float64(cy))
-				
+
 				// 绘制数字、旗子或雷
 				if cell.isMine {
 					b.screen.DrawImage(b.images["mine"], op)
@@ -162,10 +167,10 @@ func (b *Board) Draw() {
 				cell := b.cells[y][x]
 				cx := x * b.cellSize
 				cy := y * b.cellSize
-				
+
 				op := &ebiten.DrawImageOptions{}
 				op.GeoM.Translate(float64(cx), float64(cy))
-				
+
 				if cell.isOpen {
 					if cell.isMine {
 						b.screen.DrawImage(b.images["mine"], op)
@@ -175,6 +180,8 @@ func (b *Board) Draw() {
 				} else {
 					if cell.isFlagged {
 						b.screen.DrawImage(b.images["flag"], op)
+					} else if cell.isFocused {
+						b.screen.DrawImage(b.images["focus"], op)
 					} else {
 						b.screen.DrawImage(b.images["unknown"], op)
 					}
@@ -189,16 +196,16 @@ func (b *Board) openAndExpand(x, y int) {
 	if x < 0 || x >= b.cols || y < 0 || y >= b.rows {
 		return
 	}
-	
+
 	cell := &b.cells[y][x]
 	// 跳过已打开、有旗标、或地雷的格子
 	if cell.isOpen || cell.isFlagged || cell.isMine {
 		return
 	}
-	
+
 	cell.isOpen = true
 	b.open++
-	
+
 	// 只有周围无雷时才继续扩展
 	if cell.neighbor == 0 {
 		// 递归检查8个方向
@@ -213,6 +220,60 @@ func (b *Board) openAndExpand(x, y int) {
 	}
 }
 
+// 检查周围旗帜数量是否匹配
+func (b *Board) checkSurroundFlags(x, y int) bool {
+	count := 0
+	for dy := -1; dy <= 1; dy++ {
+		for dx := -1; dx <= 1; dx++ {
+			nx, ny := x+dx, y+dy
+			if nx >= 0 && nx < b.cols && ny >= 0 && ny < b.rows {
+				if b.cells[ny][nx].isFlagged {
+					count++
+				}
+			}
+		}
+	}
+	return count == b.cells[y][x].neighbor
+}
+
+// 展开周围未标记的格子
+func (b *Board) expandAround(x, y int) {
+	if b.checkSurroundFlags(x, y) {
+		for dy := -1; dy <= 1; dy++ {
+			for dx := -1; dx <= 1; dx++ {
+				nx, ny := x+dx, y+dy
+				if nx >= 0 && nx < b.cols && ny >= 0 && ny < b.rows {
+					cell := &b.cells[ny][nx]
+					if !cell.isFlagged && !cell.isOpen {
+						if cell.isMine {
+							cell.isOpen = true
+							b.isGameOver = true
+							b.isWin = false
+							return
+						}
+						b.openAndExpand(nx, ny)
+					}
+				}
+			}
+		}
+	} else {
+		for dy := -1; dy <= 1; dy++ {
+			for dx := -1; dx <= 1; dx++ {
+				nx, ny := x+dx, y+dy
+				if nx >= 0 && nx < b.cols && ny >= 0 && ny < b.rows {
+					cell := &b.cells[ny][nx]
+					if !cell.isOpen && !cell.isFlagged {
+						cell.isFocused = true
+						time.AfterFunc(FocusDelay, func() {
+							cell.isFocused = false
+						})
+					}
+				}
+			}
+		}
+	}
+}
+
 func main() {
 	board := NewDefaultBoard()
 	windowWidth = board.cols*board.cellSize + 2*BorderWidth + StateBarWidth
@@ -220,7 +281,7 @@ func main() {
 	ebiten.SetWindowSize(windowWidth*Scale, windowHeight*Scale)
 	ebiten.SetWindowTitle("MineBuster")
 	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
-	
+
 	if err := ebiten.RunGame(&Game{board: board}); err != nil {
 		log.Fatal(err)
 	}
@@ -244,13 +305,13 @@ func (g *Game) Update() error {
 		g.prevLeftDown = true
 		return nil
 	}
-	
+
 	mx, my := ebiten.CursorPosition()
-	
+
 	// 转换为棋盘坐标
 	var cx = int(math.Floor(float64(mx-BorderWidth) / float64(g.board.cellSize)))
 	var cy = int(math.Floor(float64(my-BorderWidth) / float64(g.board.cellSize)))
-	
+
 	// 检查坐标是否有效
 	if cx >= 0 && cx < g.board.cols && cy >= 0 && cy < g.board.rows {
 		ebiten.SetCursorShape(ebiten.CursorShapePointer)
@@ -259,20 +320,22 @@ func (g *Game) Update() error {
 		rightDown := ebiten.IsMouseButtonPressed(ebiten.MouseButtonRight)
 		if !g.board.isGameOver {
 			cell := &g.board.cells[cy][cx]
-			
-			// 左键单击处理
+
 			if leftDown && !g.prevLeftDown && !cell.isFlagged {
 				if cell.isMine {
 					// 踩中地雷
 					cell.isOpen = true
 					g.board.isGameOver = true
 					g.board.isWin = false
+				} else if cell.isOpen {
+					// 安全区域自动扩展
+					g.board.expandAround(cx, cy)
 				} else {
 					// 安全区域自动扩展
 					g.board.openAndExpand(cx, cy)
 				}
 			}
-			
+
 			// 右键标记处理
 			if rightDown && !g.prevRightDown && !cell.isOpen {
 				cell.isFlagged = !cell.isFlagged
@@ -282,13 +345,13 @@ func (g *Game) Update() error {
 					g.board.flags++
 				}
 			}
-			
+
 			if !g.board.isGameOver && g.board.open == g.board.rows*g.board.cols-g.board.mines {
 				g.board.isGameOver = true
 				g.board.isWin = true
 			}
 		}
-		
+
 		// 保存当前按键状态
 		g.prevLeftDown = leftDown
 		g.prevRightDown = rightDown
@@ -302,7 +365,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	g.board.Draw()
 	screen.DrawImage(g.board.screen, g.board.op)
 	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("Flags: %d", g.board.flags), g.board.cols*g.board.cellSize+BorderWidth+10, 20)
-	
+
 	if !g.board.isGameOver {
 		g.board.elapsed = time.Since(g.board.startTime)
 	}
@@ -310,7 +373,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	seconds := int(g.board.elapsed.Seconds()) % 60
 	timerText := fmt.Sprintf("Time: %02d:%02d", minutes, seconds)
 	ebitenutil.DebugPrintAt(screen, timerText, g.board.cols*g.board.cellSize+BorderWidth+10, 36)
-	
+
 	if g.board.isGameOver {
 		if g.board.isWin {
 			ebitenutil.DebugPrintAt(screen, "You Win!\nClick anywhere to restart.", g.board.cols*g.board.cellSize+BorderWidth+10, 52)
