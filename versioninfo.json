@@ -1,0 +1,39 @@
+{
+	"FixedFileInfo": {
+		"FileVersion": {
+			"Major": 1,
+			"Minor": 0,
+			"Patch": 0,
+			"Build": 0
+		},
+		"ProductVersion": {
+			"Major": 1,
+			"Minor": 0,
+			"Patch": 0,
+			"Build": 0
+		}
+	},
+	"StringFileInfo": {
+		"Comments": "一个简单的扫雷游戏",
+		"CompanyName": "",
+		"FileDescription": "一个简单的扫雷游戏",
+		"FileVersion": "v1.0.0.0",
+		"InternalName": "minebuster",
+		"LegalCopyright": "Copyright (c) 2025 skyqvn",
+		"LegalTrademarks": "",
+		"OriginalFilename": "minebuster.exe",
+		"PrivateBuild": "",
+		"ProductName": "MineBuster",
+		"ProductVersion": "v1.0.0.0",
+		"SpecialBuild": "",
+		"LanguageCode": "0804"
+	},
+	"VarFileInfo": {
+		"Translation": {
+			"LangID": "0804",
+			"CharsetID": "04B0"
+		}
+	},
+	"IconPath": "icon.ico",
+	"ManifestPath": "minebuster.exe.manifest"
+}

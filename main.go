@@ -1,3 +1,4 @@
+//go:generate goversioninfo
 package main
 
 import (
@@ -118,6 +119,11 @@ func NewBoard(rows, cols, cellSize, mines int) *Board {
 	load("flag")
 	load("cross")
 	load("focus")
+
+	load("button")
+	load("button_pressing")
+	load("button_dead")
+	load("button_dead_pressing")
 
 	return b
 }
