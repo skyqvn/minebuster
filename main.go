@@ -120,10 +120,10 @@ func NewBoard(rows, cols, cellSize, mines int) *Board {
 	load("cross")
 	load("focus")
 
-	load("button")
-	load("button_pressing")
-	load("button_dead")
-	load("button_dead_pressing")
+	// load("button")
+	// load("button_pressing")
+	// load("button_dead")
+	// load("button_dead_pressing")
 
 	return b
 }
