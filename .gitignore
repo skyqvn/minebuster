@@ -4,3 +4,4 @@
 !/output/wasm/
 /output/wasm/*.wasm
 !**/.keep
+/resource.syso

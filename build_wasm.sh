@@ -1,6 +1,7 @@
 #!/bin/bash
 
 mkdir -p ./output
+rm -f resource.syso
 
 # 编译Linux版本
 export GOARCH=wasm
