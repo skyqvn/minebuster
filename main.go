@@ -13,6 +13,7 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
+	"github.com/hajimehoshi/ebiten/v2/inpututil"
 )
 
 const (
@@ -61,13 +62,29 @@ type Board struct {
 	buttonY         int
 	buttonWidth     int
 	buttonHeight    int
+
+	// 设置面板字段
+	currentRows  int
+	currentCols  int
+	currentMines int
+
+	// 输入状态
+	isEditingRows  bool
+	isEditingCols  bool
+	isEditingMines bool
+	inputBuffer    string
+	editField      string // "rows", "cols", "mines", ""
+
+	// 设置面板位置
+	settingsX int
+	settingsY int
 }
 
 func NewBoard(rows, cols, cellSize, mines int) *Board {
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 
 	b := &Board{
-		screen:     ebiten.NewImage(rows*cellSize, cols*cellSize),
+		screen:     ebiten.NewImage(cols*cellSize, rows*cellSize),
 		rows:       rows,
 		cols:       cols,
 		cellSize:   cellSize,
@@ -79,6 +96,16 @@ func NewBoard(rows, cols, cellSize, mines int) *Board {
 		isWin:      false,
 		startTime:  time.Now(),
 		elapsed:    0,
+
+		// 设置面板初始化
+		currentRows:    rows,
+		currentCols:    cols,
+		currentMines:   mines,
+		isEditingRows:  false,
+		isEditingCols:  false,
+		isEditingMines: false,
+		inputBuffer:    "",
+		editField:      "",
 	}
 
 	b.op = &ebiten.DrawImageOptions{}
@@ -137,6 +164,10 @@ func NewBoard(rows, cols, cellSize, mines int) *Board {
 	b.buttonY = 20
 	b.buttonWidth = b.images["button"].Bounds().Dx()
 	b.buttonHeight = b.images["button"].Bounds().Dy()
+
+	// 初始化设置面板位置
+	b.settingsX = b.cols*b.cellSize + BorderWidth + 10
+	b.settingsY = b.buttonY + b.buttonHeight + 50
 
 	return b
 }
@@ -307,8 +338,6 @@ func main() {
 }
 
 func NewDefaultBoard() *Board {
-	// 用于测试
-	// return NewBoard(2, 2, 25, 1)
 	return NewBoard(16, 16, 25, 40)
 }
 
@@ -321,11 +350,102 @@ type Game struct {
 func (g *Game) Update() error {
 	mx, my := ebiten.CursorPosition()
 	leftDown := ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft)
+	rightDown := ebiten.IsMouseButtonPressed(ebiten.MouseButtonRight)
 
 	// 处理按钮点击事件
 	isButtonArea := mx >= g.board.buttonX && mx <= g.board.buttonX+g.board.buttonWidth &&
 		my >= g.board.buttonY && my <= g.board.buttonY+g.board.buttonHeight
 
+	// 处理设置面板点击事件
+	isSettingsArea := mx >= g.board.settingsX && mx <= g.board.settingsX+100 &&
+		my >= g.board.settingsY && my <= g.board.settingsY+120
+
+	// 计算设置项的点击区域
+	rowsTextArea := mx >= g.board.settingsX && mx <= g.board.settingsX+100 &&
+		my >= g.board.settingsY+30 && my <= g.board.settingsY+45
+
+	colsTextArea := mx >= g.board.settingsX && mx <= g.board.settingsX+100 &&
+		my >= g.board.settingsY+50 && my <= g.board.settingsY+65
+
+	minesTextArea := mx >= g.board.settingsX && mx <= g.board.settingsX+100 &&
+		my >= g.board.settingsY+70 && my <= g.board.settingsY+85
+
+	// 处理编辑状态
+	if isSettingsArea && leftDown && !g.prevLeftDown {
+		if rowsTextArea {
+			g.board.isEditingRows = true
+			g.board.isEditingCols = false
+			g.board.isEditingMines = false
+			g.board.editField = "rows"
+			g.board.inputBuffer = strconv.Itoa(g.board.currentRows)
+		} else if colsTextArea {
+			g.board.isEditingRows = false
+			g.board.isEditingCols = true
+			g.board.isEditingMines = false
+			g.board.editField = "cols"
+			g.board.inputBuffer = strconv.Itoa(g.board.currentCols)
+		} else if minesTextArea {
+			g.board.isEditingRows = false
+			g.board.isEditingCols = false
+			g.board.isEditingMines = true
+			g.board.editField = "mines"
+			g.board.inputBuffer = strconv.Itoa(g.board.currentMines)
+		} else {
+			// 点击设置面板其他区域，取消编辑
+			g.board.isEditingRows = false
+			g.board.isEditingCols = false
+			g.board.isEditingMines = false
+			g.board.editField = ""
+		}
+	}
+
+	// 处理键盘输入
+	if g.board.editField != "" {
+		// 获取释放的键
+		for _, key := range inpututil.AppendJustReleasedKeys(nil) {
+			switch {
+			case key >= ebiten.Key0 && key <= ebiten.Key9:
+				// 数字键
+				g.board.inputBuffer += string(key - ebiten.Key0 + '0')
+			case key == ebiten.KeyBackspace:
+				// 退格键
+				if len(g.board.inputBuffer) > 0 {
+					g.board.inputBuffer = g.board.inputBuffer[:len(g.board.inputBuffer)-1]
+				}
+			case key == ebiten.KeyEnter || key == ebiten.KeyKPEnter:
+				// 回车键确认
+				if val, err := strconv.Atoi(g.board.inputBuffer); err == nil {
+					// 验证并设置值
+					switch g.board.editField {
+					case "rows":
+						if val >= 2 && val <= 30 {
+							g.board.currentRows = val
+						}
+					case "cols":
+						if val >= 2 && val <= 30 {
+							g.board.currentCols = val
+						}
+					case "mines":
+						maxMines := g.board.currentRows*g.board.currentCols - 1
+						if val >= 1 && val <= maxMines {
+							g.board.currentMines = val
+						}
+					}
+				}
+				// 取消编辑状态
+				g.board.isEditingRows = false
+				g.board.isEditingCols = false
+				g.board.isEditingMines = false
+				g.board.editField = ""
+			case key == ebiten.KeyEscape:
+				// ESC键取消
+				g.board.isEditingRows = false
+				g.board.isEditingCols = false
+				g.board.isEditingMines = false
+				g.board.editField = ""
+			}
+		}
+	}
 	if isButtonArea {
 		ebiten.SetCursorShape(ebiten.CursorShapePointer)
 		if leftDown && !g.prevLeftDown {
@@ -333,7 +453,11 @@ func (g *Game) Update() error {
 			g.board.isButtonPressed = true
 		} else if !leftDown && g.prevLeftDown {
 			// 按钮释放，重启游戏
-			g.board = NewDefaultBoard()
+			g.board = NewBoard(g.board.currentRows, g.board.currentCols, 25, g.board.currentMines)
+			// 更新窗口大小
+			windowWidth = g.board.cols*g.board.cellSize + 2*BorderWidth + StateBarWidth
+			windowHeight = g.board.rows*g.board.cellSize + 2*BorderWidth
+			ebiten.SetWindowSize(windowWidth*Scale, windowHeight*Scale)
 			return nil
 		}
 	} else {
@@ -344,8 +468,6 @@ func (g *Game) Update() error {
 		// 检查坐标是否有效
 		if cx >= 0 && cx < g.board.cols && cy >= 0 && cy < g.board.rows {
 			ebiten.SetCursorShape(ebiten.CursorShapePointer)
-			// 获取当前按键状态
-			rightDown := ebiten.IsMouseButtonPressed(ebiten.MouseButtonRight)
 			if !g.board.isGameOver {
 				cell := &g.board.cells[cy][cx]
 
@@ -391,6 +513,7 @@ func (g *Game) Update() error {
 
 	// 保存当前按键状态
 	g.prevLeftDown = leftDown
+	g.prevRightDown = rightDown
 	return nil
 }
 
@@ -430,6 +553,35 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	seconds := int(g.board.elapsed.Seconds()) % 60
 	timerText := fmt.Sprintf("Time: %02d:%02d", minutes, seconds)
 	ebitenutil.DebugPrintAt(screen, timerText, g.board.cols*g.board.cellSize+BorderWidth+10, buttonBottom+16)
+
+	// 绘制设置面板
+	ebitenutil.DebugPrintAt(screen, "Settings", g.board.settingsX, g.board.settingsY)
+
+	// 行设置
+	rowsText := fmt.Sprintf("Rows: %d", g.board.currentRows)
+	if g.board.isEditingRows {
+		rowsText = fmt.Sprintf("Rows: %s_", g.board.inputBuffer)
+	}
+	ebitenutil.DebugPrintAt(screen, rowsText, g.board.settingsX, g.board.settingsY+30)
+
+	// 列设置
+	colsText := fmt.Sprintf("Cols: %d", g.board.currentCols)
+	if g.board.isEditingCols {
+		colsText = fmt.Sprintf("Cols: %s_", g.board.inputBuffer)
+	}
+	ebitenutil.DebugPrintAt(screen, colsText, g.board.settingsX, g.board.settingsY+50)
+
+	// 雷数设置
+	minesText := fmt.Sprintf("Mines: %d", g.board.currentMines)
+	if g.board.isEditingMines {
+		minesText = fmt.Sprintf("Mines: %s_", g.board.inputBuffer)
+	}
+	ebitenutil.DebugPrintAt(screen, minesText, g.board.settingsX, g.board.settingsY+70)
+
+	// 操作提示
+	ebitenutil.DebugPrintAt(screen, "Click number to edit", g.board.settingsX, g.board.settingsY+90)
+	ebitenutil.DebugPrintAt(screen, "Press Enter to confirm, ", g.board.settingsX, g.board.settingsY+110)
+	ebitenutil.DebugPrintAt(screen, "ESC to cancel", g.board.settingsX, g.board.settingsY+130)
 }
 
 func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
