@@ -516,6 +516,33 @@ func (g *Game) Update() error {
 			g.board.isButtonPressed = true
 		} else if !leftDown && g.prevLeftDown {
 			// 按钮释放，重启游戏
+			// 自动确认输入
+			if g.board.editField != "" {
+				if val, err := strconv.Atoi(g.board.inputBuffer); err == nil {
+					// 验证并设置值
+					switch g.board.editField {
+					case "rows":
+						if val >= 2 && val <= MaxBoardSize {
+							g.board.currentRows = val
+						}
+					case "cols":
+						if val >= 2 && val <= MaxBoardSize {
+							g.board.currentCols = val
+						}
+					case "mines":
+						maxMines := g.board.currentRows*g.board.currentCols - 1
+						if val >= 1 && val <= maxMines {
+							g.board.currentMines = val
+						}
+					}
+				}
+				// 取消编辑状态
+				g.board.isEditingRows = false
+				g.board.isEditingCols = false
+				g.board.isEditingMines = false
+				g.board.editField = ""
+				g.board.inputBuffer = ""
+			}
 			g.board = NewBoard(g.board.currentRows, g.board.currentCols, 25, g.board.currentMines)
 			// 更新窗口大小
 			windowWidth = g.board.cols*g.board.cellSize + 2*BorderWidth + StateBarWidth
