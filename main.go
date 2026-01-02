@@ -54,6 +54,13 @@ type Board struct {
 
 	startTime time.Time
 	elapsed   time.Duration
+
+	// 按钮相关字段
+	isButtonPressed bool
+	buttonX         int
+	buttonY         int
+	buttonWidth     int
+	buttonHeight    int
 }
 
 func NewBoard(rows, cols, cellSize, mines int) *Board {
@@ -120,10 +127,16 @@ func NewBoard(rows, cols, cellSize, mines int) *Board {
 	load("cross")
 	load("focus")
 
-	// load("button")
-	// load("button_pressing")
-	// load("button_dead")
-	// load("button_dead_pressing")
+	load("button")
+	load("button_pressing")
+	load("button_dead")
+	load("button_dead_pressing")
+
+	// 初始化按钮位置和大小
+	b.buttonX = b.cols*b.cellSize + BorderWidth + 10
+	b.buttonY = 20
+	b.buttonWidth = b.images["button"].Bounds().Dx()
+	b.buttonHeight = b.images["button"].Bounds().Dy()
 
 	return b
 }
@@ -306,71 +319,109 @@ type Game struct {
 }
 
 func (g *Game) Update() error {
-	if g.board.isGameOver && !g.prevLeftDown && ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft) {
-		g.board = NewDefaultBoard()
-		g.prevLeftDown = true
-		return nil
-	}
-
 	mx, my := ebiten.CursorPosition()
+	leftDown := ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft)
 
-	// 转换为棋盘坐标
-	var cx = int(math.Floor(float64(mx-BorderWidth) / float64(g.board.cellSize)))
-	var cy = int(math.Floor(float64(my-BorderWidth) / float64(g.board.cellSize)))
+	// 处理按钮点击事件
+	isButtonArea := mx >= g.board.buttonX && mx <= g.board.buttonX+g.board.buttonWidth &&
+		my >= g.board.buttonY && my <= g.board.buttonY+g.board.buttonHeight
 
-	// 检查坐标是否有效
-	if cx >= 0 && cx < g.board.cols && cy >= 0 && cy < g.board.rows {
+	if isButtonArea {
 		ebiten.SetCursorShape(ebiten.CursorShapePointer)
-		// 获取当前按键状态
-		leftDown := ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft)
-		rightDown := ebiten.IsMouseButtonPressed(ebiten.MouseButtonRight)
-		if !g.board.isGameOver {
-			cell := &g.board.cells[cy][cx]
-
-			if leftDown && !g.prevLeftDown && !cell.isFlagged {
-				if cell.isMine {
-					// 踩中地雷
-					cell.isOpen = true
-					g.board.isGameOver = true
-					g.board.isWin = false
-				} else if cell.isOpen {
-					// 安全区域自动扩展
-					g.board.expandAround(cx, cy)
-				} else {
-					// 安全区域自动扩展
-					g.board.openAndExpand(cx, cy)
-				}
-			}
-
-			// 右键标记处理
-			if rightDown && !g.prevRightDown && !cell.isOpen {
-				cell.isFlagged = !cell.isFlagged
-				if cell.isFlagged {
-					g.board.flags--
-				} else {
-					g.board.flags++
-				}
-			}
-
-			if !g.board.isGameOver && g.board.open == g.board.rows*g.board.cols-g.board.mines {
-				g.board.isGameOver = true
-				g.board.isWin = true
-			}
+		if leftDown && !g.prevLeftDown {
+			// 按钮按下
+			g.board.isButtonPressed = true
+		} else if !leftDown && g.prevLeftDown {
+			// 按钮释放，重启游戏
+			g.board = NewDefaultBoard()
+			return nil
 		}
-
-		// 保存当前按键状态
-		g.prevLeftDown = leftDown
-		g.prevRightDown = rightDown
 	} else {
-		ebiten.SetCursorShape(ebiten.CursorShapeDefault)
+		// 转换为棋盘坐标
+		var cx = int(math.Floor(float64(mx-BorderWidth) / float64(g.board.cellSize)))
+		var cy = int(math.Floor(float64(my-BorderWidth) / float64(g.board.cellSize)))
+
+		// 检查坐标是否有效
+		if cx >= 0 && cx < g.board.cols && cy >= 0 && cy < g.board.rows {
+			ebiten.SetCursorShape(ebiten.CursorShapePointer)
+			// 获取当前按键状态
+			rightDown := ebiten.IsMouseButtonPressed(ebiten.MouseButtonRight)
+			if !g.board.isGameOver {
+				cell := &g.board.cells[cy][cx]
+
+				if leftDown && !g.prevLeftDown && !cell.isFlagged {
+					if cell.isMine {
+						// 踩中地雷
+						cell.isOpen = true
+						g.board.isGameOver = true
+						g.board.isWin = false
+					} else if cell.isOpen {
+						// 安全区域自动扩展
+						g.board.expandAround(cx, cy)
+					} else {
+						// 安全区域自动扩展
+						g.board.openAndExpand(cx, cy)
+					}
+				}
+
+				// 右键标记处理
+				if rightDown && !g.prevRightDown && !cell.isOpen {
+					cell.isFlagged = !cell.isFlagged
+					if cell.isFlagged {
+						g.board.flags--
+					} else {
+						g.board.flags++
+					}
+				}
+
+				if !g.board.isGameOver && g.board.open == g.board.rows*g.board.cols-g.board.mines {
+					g.board.isGameOver = true
+					g.board.isWin = true
+				}
+			}
+		} else {
+			ebiten.SetCursorShape(ebiten.CursorShapeDefault)
+		}
 	}
+
+	// 更新按钮状态
+	if !leftDown {
+		g.board.isButtonPressed = false
+	}
+
+	// 保存当前按键状态
+	g.prevLeftDown = leftDown
 	return nil
 }
 
 func (g *Game) Draw(screen *ebiten.Image) {
 	g.board.Draw()
 	screen.DrawImage(g.board.screen, g.board.op)
-	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("Flags: %d", g.board.flags), g.board.cols*g.board.cellSize+BorderWidth+10, 20)
+
+	// 绘制重启按钮
+	buttonOp := &ebiten.DrawImageOptions{}
+	buttonOp.GeoM.Translate(float64(g.board.buttonX), float64(g.board.buttonY))
+
+	// 根据游戏状态选择按钮图片
+	var buttonImage string
+	if g.board.isButtonPressed {
+		if g.board.isGameOver {
+			buttonImage = "button_dead_pressing"
+		} else {
+			buttonImage = "button_pressing"
+		}
+	} else {
+		if g.board.isGameOver {
+			buttonImage = "button_dead"
+		} else {
+			buttonImage = "button"
+		}
+	}
+	screen.DrawImage(g.board.images[buttonImage], buttonOp)
+
+	// 调整文本位置，在按钮下方显示
+	buttonBottom := g.board.buttonY + g.board.buttonHeight + 10
+	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("Flags: %d", g.board.flags), g.board.cols*g.board.cellSize+BorderWidth+10, buttonBottom)
 
 	if !g.board.isGameOver {
 		g.board.elapsed = time.Since(g.board.startTime)
@@ -378,15 +429,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	minutes := int(g.board.elapsed.Minutes())
 	seconds := int(g.board.elapsed.Seconds()) % 60
 	timerText := fmt.Sprintf("Time: %02d:%02d", minutes, seconds)
-	ebitenutil.DebugPrintAt(screen, timerText, g.board.cols*g.board.cellSize+BorderWidth+10, 36)
-
-	if g.board.isGameOver {
-		if g.board.isWin {
-			ebitenutil.DebugPrintAt(screen, "You Win!\nClick anywhere to restart.", g.board.cols*g.board.cellSize+BorderWidth+10, 52)
-		} else {
-			ebitenutil.DebugPrintAt(screen, "Game Over!\nClick anywhere to restart.", g.board.cols*g.board.cellSize+BorderWidth+10, 52)
-		}
-	}
+	ebitenutil.DebugPrintAt(screen, timerText, g.board.cols*g.board.cellSize+BorderWidth+10, buttonBottom+16)
 }
 
 func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
