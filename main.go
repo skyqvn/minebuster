@@ -393,7 +393,11 @@ func (g *Game) Update() error {
 
 	// 处理编辑状态
 	if isSettingsArea && leftDown && !g.prevLeftDown {
-		if rowsTextArea {
+		// 切换编辑字段前，保存当前输入
+		if rowsTextArea && g.board.editField != "rows" {
+			// 保存之前的输入
+			g.saveInputAndExitEdit()
+			// 开始编辑行
 			g.board.isEditingRows = true
 			g.board.isEditingCols = false
 			g.board.isEditingMines = false
@@ -402,7 +406,10 @@ func (g *Game) Update() error {
 			// 重置光标状态
 			g.board.isCursorOn = true
 			g.board.lastBlinkTime = time.Now()
-		} else if colsTextArea {
+		} else if colsTextArea && g.board.editField != "cols" {
+			// 保存之前的输入
+			g.saveInputAndExitEdit()
+			// 开始编辑列
 			g.board.isEditingRows = false
 			g.board.isEditingCols = true
 			g.board.isEditingMines = false
@@ -411,7 +418,10 @@ func (g *Game) Update() error {
 			// 重置光标状态
 			g.board.isCursorOn = true
 			g.board.lastBlinkTime = time.Now()
-		} else if minesTextArea {
+		} else if minesTextArea && g.board.editField != "mines" {
+			// 保存之前的输入
+			g.saveInputAndExitEdit()
+			// 开始编辑地雷数
 			g.board.isEditingRows = false
 			g.board.isEditingCols = false
 			g.board.isEditingMines = true
@@ -420,43 +430,15 @@ func (g *Game) Update() error {
 			// 重置光标状态
 			g.board.isCursorOn = true
 			g.board.lastBlinkTime = time.Now()
-		} else {
+		} else if !rowsTextArea && !colsTextArea && !minesTextArea {
 			// 点击设置面板其他区域，取消编辑
-			g.board.isEditingRows = false
-			g.board.isEditingCols = false
-			g.board.isEditingMines = false
-			g.board.editField = ""
-			g.board.inputBuffer = ""
+			g.saveInputAndExitEdit()
 		}
 	}
 
 	// 点击非设置区域，完成输入
 	if leftDown && !g.prevLeftDown && !isSettingsArea && g.board.editField != "" {
-		// 保存输入值
-		if val, err := strconv.Atoi(g.board.inputBuffer); err == nil {
-			// 验证并设置值
-			switch g.board.editField {
-			case "rows":
-				if val >= 2 && val <= MaxBoardSize {
-					g.board.currentRows = val
-				}
-			case "cols":
-				if val >= 2 && val <= MaxBoardSize {
-					g.board.currentCols = val
-				}
-			case "mines":
-				maxMines := g.board.currentRows*g.board.currentCols - 1
-				if val >= 1 && val <= maxMines {
-					g.board.currentMines = val
-				}
-			}
-		}
-		// 取消编辑状态
-		g.board.isEditingRows = false
-		g.board.isEditingCols = false
-		g.board.isEditingMines = false
-		g.board.editField = ""
-		g.board.inputBuffer = ""
+		g.saveInputAndExitEdit()
 	}
 
 	// 处理键盘输入
@@ -477,35 +459,16 @@ func (g *Game) Update() error {
 				}
 			case key == ebiten.KeyEnter || key == ebiten.KeyKPEnter:
 				// 回车键确认
-				if val, err := strconv.Atoi(g.board.inputBuffer); err == nil {
-					// 验证并设置值
-					switch g.board.editField {
-					case "rows":
-						if val >= 2 && val <= MaxBoardSize {
-							g.board.currentRows = val
-						}
-					case "cols":
-						if val >= 2 && val <= MaxBoardSize {
-							g.board.currentCols = val
-						}
-					case "mines":
-						maxMines := g.board.currentRows*g.board.currentCols - 1
-						if val >= 1 && val <= maxMines {
-							g.board.currentMines = val
-						}
-					}
-				}
-				// 取消编辑状态
-				g.board.isEditingRows = false
-				g.board.isEditingCols = false
-				g.board.isEditingMines = false
-				g.board.editField = ""
+				g.saveInputAndExitEdit()
 			case key == ebiten.KeyEscape:
-				// ESC键取消
+				// ESC键取消，不保存输入
 				g.board.isEditingRows = false
 				g.board.isEditingCols = false
 				g.board.isEditingMines = false
 				g.board.editField = ""
+				g.board.inputBuffer = ""
+				g.board.isCursorOn = false
+				g.board.lastBlinkTime = time.Time{}
 			}
 		}
 	}
@@ -517,32 +480,7 @@ func (g *Game) Update() error {
 		} else if !leftDown && g.prevLeftDown {
 			// 按钮释放，重启游戏
 			// 自动确认输入
-			if g.board.editField != "" {
-				if val, err := strconv.Atoi(g.board.inputBuffer); err == nil {
-					// 验证并设置值
-					switch g.board.editField {
-					case "rows":
-						if val >= 2 && val <= MaxBoardSize {
-							g.board.currentRows = val
-						}
-					case "cols":
-						if val >= 2 && val <= MaxBoardSize {
-							g.board.currentCols = val
-						}
-					case "mines":
-						maxMines := g.board.currentRows*g.board.currentCols - 1
-						if val >= 1 && val <= maxMines {
-							g.board.currentMines = val
-						}
-					}
-				}
-				// 取消编辑状态
-				g.board.isEditingRows = false
-				g.board.isEditingCols = false
-				g.board.isEditingMines = false
-				g.board.editField = ""
-				g.board.inputBuffer = ""
-			}
+			g.saveInputAndExitEdit()
 			g.board = NewBoard(g.board.currentRows, g.board.currentCols, 25, g.board.currentMines)
 			// 更新窗口大小
 			windowWidth = g.board.cols*g.board.cellSize + 2*BorderWidth + StateBarWidth
@@ -607,6 +545,37 @@ func (g *Game) Update() error {
 	return nil
 }
 
+// 保存当前输入值并取消编辑状态
+func (g *Game) saveInputAndExitEdit() {
+	if g.board.editField != "" {
+		if val, err := strconv.Atoi(g.board.inputBuffer); err == nil {
+			// 验证并设置值
+			switch g.board.editField {
+			case "rows":
+				if val >= 2 && val <= MaxBoardSize {
+					g.board.currentRows = val
+				}
+			case "cols":
+				if val >= 2 && val <= MaxBoardSize {
+					g.board.currentCols = val
+				}
+			case "mines":
+				maxMines := g.board.currentRows*g.board.currentCols - 1
+				if val >= 1 && val <= maxMines {
+					g.board.currentMines = val
+				}
+			}
+		}
+		// 取消编辑状态
+		g.board.isEditingRows = false
+		g.board.isEditingCols = false
+		g.board.isEditingMines = false
+		g.board.editField = ""
+		g.board.inputBuffer = ""
+		g.board.isCursorOn = false
+		g.board.lastBlinkTime = time.Time{}
+	}
+}
 func (g *Game) Draw(screen *ebiten.Image) {
 	g.board.Draw()
 	screen.DrawImage(g.board.screen, g.board.op)
