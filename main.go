@@ -20,6 +20,7 @@ const (
 	Scale         = 2
 	BorderWidth   = 10
 	StateBarWidth = 160
+	MaxBoardSize  = 40
 )
 
 var windowWidth, windowHeight int
@@ -74,6 +75,9 @@ type Board struct {
 	isEditingMines bool
 	inputBuffer    string
 	editField      string // "rows", "cols", "mines", ""
+	// 光标闪烁相关
+	lastBlinkTime time.Time
+	isCursorOn    bool
 
 	// 设置面板位置
 	settingsX int
@@ -362,13 +366,30 @@ func (g *Game) Update() error {
 
 	// 计算设置项的点击区域
 	rowsTextArea := mx >= g.board.settingsX && mx <= g.board.settingsX+100 &&
-		my >= g.board.settingsY+30 && my <= g.board.settingsY+45
+		my >= g.board.settingsY+20 && my <= g.board.settingsY+35
 
 	colsTextArea := mx >= g.board.settingsX && mx <= g.board.settingsX+100 &&
-		my >= g.board.settingsY+50 && my <= g.board.settingsY+65
+		my >= g.board.settingsY+40 && my <= g.board.settingsY+55
 
 	minesTextArea := mx >= g.board.settingsX && mx <= g.board.settingsX+100 &&
-		my >= g.board.settingsY+70 && my <= g.board.settingsY+85
+		my >= g.board.settingsY+60 && my <= g.board.settingsY+75
+
+	// 光标闪烁逻辑
+	if g.board.editField != "" {
+		// 初始化闪烁时间
+		if g.board.lastBlinkTime.IsZero() {
+			g.board.lastBlinkTime = time.Now()
+		}
+		// 每500毫秒闪烁一次
+		if time.Since(g.board.lastBlinkTime) > 500*time.Millisecond {
+			g.board.isCursorOn = !g.board.isCursorOn
+			g.board.lastBlinkTime = time.Now()
+		}
+	} else {
+		// 非编辑状态下重置光标状态
+		g.board.isCursorOn = false
+		g.board.lastBlinkTime = time.Time{}
+	}
 
 	// 处理编辑状态
 	if isSettingsArea && leftDown && !g.prevLeftDown {
@@ -378,25 +399,64 @@ func (g *Game) Update() error {
 			g.board.isEditingMines = false
 			g.board.editField = "rows"
 			g.board.inputBuffer = strconv.Itoa(g.board.currentRows)
+			// 重置光标状态
+			g.board.isCursorOn = true
+			g.board.lastBlinkTime = time.Now()
 		} else if colsTextArea {
 			g.board.isEditingRows = false
 			g.board.isEditingCols = true
 			g.board.isEditingMines = false
 			g.board.editField = "cols"
 			g.board.inputBuffer = strconv.Itoa(g.board.currentCols)
+			// 重置光标状态
+			g.board.isCursorOn = true
+			g.board.lastBlinkTime = time.Now()
 		} else if minesTextArea {
 			g.board.isEditingRows = false
 			g.board.isEditingCols = false
 			g.board.isEditingMines = true
 			g.board.editField = "mines"
 			g.board.inputBuffer = strconv.Itoa(g.board.currentMines)
+			// 重置光标状态
+			g.board.isCursorOn = true
+			g.board.lastBlinkTime = time.Now()
 		} else {
 			// 点击设置面板其他区域，取消编辑
 			g.board.isEditingRows = false
 			g.board.isEditingCols = false
 			g.board.isEditingMines = false
 			g.board.editField = ""
+			g.board.inputBuffer = ""
 		}
+	}
+
+	// 点击非设置区域，完成输入
+	if leftDown && !g.prevLeftDown && !isSettingsArea && g.board.editField != "" {
+		// 保存输入值
+		if val, err := strconv.Atoi(g.board.inputBuffer); err == nil {
+			// 验证并设置值
+			switch g.board.editField {
+			case "rows":
+				if val >= 2 && val <= MaxBoardSize {
+					g.board.currentRows = val
+				}
+			case "cols":
+				if val >= 2 && val <= MaxBoardSize {
+					g.board.currentCols = val
+				}
+			case "mines":
+				maxMines := g.board.currentRows*g.board.currentCols - 1
+				if val >= 1 && val <= maxMines {
+					g.board.currentMines = val
+				}
+			}
+		}
+		// 取消编辑状态
+		g.board.isEditingRows = false
+		g.board.isEditingCols = false
+		g.board.isEditingMines = false
+		g.board.editField = ""
+		g.board.inputBuffer = ""
 	}
 
 	// 处理键盘输入
@@ -407,6 +467,9 @@ func (g *Game) Update() error {
 			case key >= ebiten.Key0 && key <= ebiten.Key9:
 				// 数字键
 				g.board.inputBuffer += string(key - ebiten.Key0 + '0')
+			case key >= ebiten.KeyKP0 && key <= ebiten.KeyKP9:
+				// 数字小键盘键
+				g.board.inputBuffer += string(key - ebiten.KeyKP0 + '0')
 			case key == ebiten.KeyBackspace:
 				// 退格键
 				if len(g.board.inputBuffer) > 0 {
@@ -418,11 +481,11 @@ func (g *Game) Update() error {
 					// 验证并设置值
 					switch g.board.editField {
 					case "rows":
-						if val >= 2 && val <= 30 {
+						if val >= 2 && val <= MaxBoardSize {
 							g.board.currentRows = val
 						}
 					case "cols":
-						if val >= 2 && val <= 30 {
+						if val >= 2 && val <= MaxBoardSize {
 							g.board.currentCols = val
 						}
 					case "mines":
@@ -555,33 +618,45 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	ebitenutil.DebugPrintAt(screen, timerText, g.board.cols*g.board.cellSize+BorderWidth+10, buttonBottom+16)
 
 	// 绘制设置面板
-	ebitenutil.DebugPrintAt(screen, "Settings", g.board.settingsX, g.board.settingsY)
+	ebitenutil.DebugPrintAt(screen, "Settings: ", g.board.settingsX, g.board.settingsY)
 
 	// 行设置
 	rowsText := fmt.Sprintf("Rows: %d", g.board.currentRows)
 	if g.board.isEditingRows {
-		rowsText = fmt.Sprintf("Rows: %s_", g.board.inputBuffer)
+		if g.board.isCursorOn {
+			rowsText = fmt.Sprintf("Rows: %s_", g.board.inputBuffer)
+		} else {
+			rowsText = fmt.Sprintf("Rows: %s", g.board.inputBuffer)
+		}
 	}
-	ebitenutil.DebugPrintAt(screen, rowsText, g.board.settingsX, g.board.settingsY+30)
+	ebitenutil.DebugPrintAt(screen, rowsText, g.board.settingsX, g.board.settingsY+20)
 
 	// 列设置
 	colsText := fmt.Sprintf("Cols: %d", g.board.currentCols)
 	if g.board.isEditingCols {
-		colsText = fmt.Sprintf("Cols: %s_", g.board.inputBuffer)
+		if g.board.isCursorOn {
+			colsText = fmt.Sprintf("Cols: %s_", g.board.inputBuffer)
+		} else {
+			colsText = fmt.Sprintf("Cols: %s", g.board.inputBuffer)
+		}
 	}
-	ebitenutil.DebugPrintAt(screen, colsText, g.board.settingsX, g.board.settingsY+50)
+	ebitenutil.DebugPrintAt(screen, colsText, g.board.settingsX, g.board.settingsY+40)
 
 	// 雷数设置
 	minesText := fmt.Sprintf("Mines: %d", g.board.currentMines)
 	if g.board.isEditingMines {
-		minesText = fmt.Sprintf("Mines: %s_", g.board.inputBuffer)
+		if g.board.isCursorOn {
+			minesText = fmt.Sprintf("Mines: %s_", g.board.inputBuffer)
+		} else {
+			minesText = fmt.Sprintf("Mines: %s", g.board.inputBuffer)
+		}
 	}
-	ebitenutil.DebugPrintAt(screen, minesText, g.board.settingsX, g.board.settingsY+70)
+	ebitenutil.DebugPrintAt(screen, minesText, g.board.settingsX, g.board.settingsY+60)
 
 	// 操作提示
-	ebitenutil.DebugPrintAt(screen, "Click number to edit", g.board.settingsX, g.board.settingsY+90)
-	ebitenutil.DebugPrintAt(screen, "Press Enter to confirm, ", g.board.settingsX, g.board.settingsY+110)
-	ebitenutil.DebugPrintAt(screen, "ESC to cancel", g.board.settingsX, g.board.settingsY+130)
+	ebitenutil.DebugPrintAt(screen, "Click number to edit", g.board.settingsX, g.board.settingsY+80)
+	ebitenutil.DebugPrintAt(screen, "Press Enter to confirm, ", g.board.settingsX, g.board.settingsY+100)
+	ebitenutil.DebugPrintAt(screen, "ESC to cancel", g.board.settingsX, g.board.settingsY+120)
 }
 
 func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
