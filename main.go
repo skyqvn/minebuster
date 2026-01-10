@@ -611,7 +611,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	minutes := int(g.board.elapsed.Minutes())
 	seconds := int(g.board.elapsed.Seconds()) % 60
 	timerText := fmt.Sprintf("Time: %02d:%02d", minutes, seconds)
-	ebitenutil.DebugPrintAt(screen, timerText, g.board.cols*g.board.cellSize+BorderWidth+10, buttonBottom+16)
+	ebitenutil.DebugPrintAt(screen, timerText, g.board.cols*g.board.cellSize+BorderWidth+10, buttonBottom+20)
 
 	// 绘制设置面板
 	ebitenutil.DebugPrintAt(screen, "Settings: ", g.board.settingsX, g.board.settingsY)
