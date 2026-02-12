@@ -87,6 +87,12 @@ type Board struct {
 func NewBoard(rows, cols, cellSize, mines int) *Board {
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 
+	// 确保雷数不超过总格子数
+	maxMines := rows*cols - 1
+	if mines > maxMines {
+		mines = maxMines
+	}
+
 	b := &Board{
 		screen:     ebiten.NewImage(cols*cellSize, rows*cellSize),
 		rows:       rows,
@@ -260,6 +266,13 @@ func (b *Board) openAndExpand(x, y int) {
 	cell.isOpen = true
 	b.open++
 
+	// 检查胜利条件
+	if b.open == b.rows*b.cols-b.mines {
+		b.isGameOver = true
+		b.isWin = true
+		return
+	}
+
 	// 只有周围无雷时才继续扩展
 	if cell.neighbor == 0 {
 		// 递归检查8个方向
@@ -306,6 +319,10 @@ func (b *Board) expandAround(x, y int) {
 							return
 						}
 						b.openAndExpand(nx, ny)
+						// 检查胜利条件，避免在递归中重复检查
+						if b.isGameOver {
+							return
+						}
 					}
 				}
 			}
@@ -587,13 +604,13 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	// 根据游戏状态选择按钮图片
 	var buttonImage string
 	if g.board.isButtonPressed {
-		if g.board.isGameOver {
+		if g.board.isGameOver && !g.board.isWin {
 			buttonImage = "button_dead_pressing"
 		} else {
 			buttonImage = "button_pressing"
 		}
 	} else {
-		if g.board.isGameOver {
+		if g.board.isGameOver && !g.board.isWin {
 			buttonImage = "button_dead"
 		} else {
 			buttonImage = "button"
